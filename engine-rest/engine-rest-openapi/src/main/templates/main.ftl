@@ -31,6 +31,7 @@
 
   ],
   "tags": [
+    {"name": "Condition"},
     {"name": "Process instance"},
     {"name": "Deployment"}
   ],
