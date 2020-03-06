@@ -20,23 +20,17 @@ import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.batch.Batch;
 import org.camunda.bpm.engine.impl.ProcessInstanceQueryImpl;
 import org.camunda.bpm.engine.impl.batch.AbstractBatchJobHandler;
-import org.camunda.bpm.engine.impl.batch.BatchEntity;
 import org.camunda.bpm.engine.impl.batch.BatchJobConfiguration;
 import org.camunda.bpm.engine.impl.batch.BatchJobContext;
 import org.camunda.bpm.engine.impl.batch.BatchJobDeclaration;
-import org.camunda.bpm.engine.impl.context.Context;
 import org.camunda.bpm.engine.impl.interceptor.CommandContext;
 import org.camunda.bpm.engine.impl.jobexecutor.JobDeclaration;
 import org.camunda.bpm.engine.impl.persistence.entity.ByteArrayEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.ByteArrayManager;
 import org.camunda.bpm.engine.impl.persistence.entity.ExecutionEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.JobEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.JobManager;
 import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 /**
  * @author Askar Akhmerov
@@ -78,9 +72,9 @@ public class DeleteProcessInstancesJobHandler extends AbstractBatchJobHandler<De
     try {
       RuntimeService runtimeService = commandContext.getProcessEngineConfiguration().getRuntimeService();
       if(batchConfiguration.isFailIfNotExists()) {
-        runtimeService.deleteProcessInstances(batchConfiguration.getIds(), batchConfiguration.deleteReason, batchConfiguration.isSkipCustomListeners(), true, batchConfiguration.isSkipSubprocesses());        
+        runtimeService.deleteProcessInstances(batchConfiguration.getIds(), batchConfiguration.deleteReason, batchConfiguration.isSkipCustomListeners(), true, batchConfiguration.isSkipSubprocesses());
       } else {
-        runtimeService.deleteProcessInstancesIfExists(batchConfiguration.getIds(), batchConfiguration.deleteReason, batchConfiguration.isSkipCustomListeners(), true, batchConfiguration.isSkipSubprocesses());                
+        runtimeService.deleteProcessInstancesIfExists(batchConfiguration.getIds(), batchConfiguration.deleteReason, batchConfiguration.isSkipCustomListeners(), true, batchConfiguration.isSkipSubprocesses());
       }
     } finally {
       commandContext.enableUserOperationLog();
@@ -91,80 +85,17 @@ public class DeleteProcessInstancesJobHandler extends AbstractBatchJobHandler<De
   }
 
   @Override
-  public boolean createJobs(BatchEntity batch) {
-    DeleteProcessInstanceBatchConfiguration configuration = readConfiguration(batch.getConfigurationBytes());
-
-    List<String> ids = configuration.getIds();
-    final CommandContext commandContext = Context.getCommandContext();
-
-    int batchJobsPerSeed = batch.getBatchJobsPerSeed();
-    int invocationsPerBatchJob = batch.getInvocationsPerBatchJob();
-
-    int numberOfItemsToProcess = Math.min(invocationsPerBatchJob * batchJobsPerSeed, ids.size());
-    // view of process instances to process
-    final List<String> processIds = ids.subList(0, numberOfItemsToProcess);
-
-    List<String> deploymentIds = commandContext.runWithoutAuthorization(new Callable<List<String>>() {
-      @Override
-      public List<String> call() throws Exception {
-        return commandContext.getDeploymentManager().findDeploymentIdsByProcessInstances(processIds);
-      }
-    });
-
-    for (final String deploymentId : deploymentIds) {
-
-      List<String> processIdsPerDeployment = commandContext.runWithoutAuthorization(new Callable<List<String>>() {
-        @Override
-        public List<String> call() throws Exception {
-          final ProcessInstanceQueryImpl processInstanceQueryToBeProcess = new ProcessInstanceQueryImpl();
-          processInstanceQueryToBeProcess.processInstanceIds(new HashSet<String>(processIds)).deploymentId(deploymentId);
-          return commandContext.getExecutionManager().findProcessInstancesIdsByQueryCriteria(processInstanceQueryToBeProcess);
-        }
-      });
-
-      processIds.removeAll(processIdsPerDeployment);
-
-      createJobEntities(batch, configuration, deploymentId, processIdsPerDeployment, invocationsPerBatchJob);
-    }
-
-    // when there are non existing process instance ids
-    if (!processIds.isEmpty()) {
-      createJobEntities(batch, configuration, null, processIds, invocationsPerBatchJob);
-    }
-
-    return ids.isEmpty();
+  protected List<String> getDeploymentIds(final CommandContext commandContext, List<String> processIds) {
+    return commandContext.runWithoutAuthorization(() ->
+      commandContext.getDeploymentManager().findDeploymentIdsByProcessInstances(processIds));
   }
 
-  protected void createJobEntities(BatchEntity batch, DeleteProcessInstanceBatchConfiguration configuration, String deploymentId,
-      List<String> processInstancesToHandle, int invocationsPerBatchJob) {
-
-
-    CommandContext commandContext = Context.getCommandContext();
-    ByteArrayManager byteArrayManager = commandContext.getByteArrayManager();
-    JobManager jobManager = commandContext.getJobManager();
-
-    int createdJobs = 0;
-    while (!processInstancesToHandle.isEmpty()) {
-      int lastIdIndex = Math.min(invocationsPerBatchJob, processInstancesToHandle.size());
-      // view of process instances for this job
-      List<String> idsForJob = processInstancesToHandle.subList(0, lastIdIndex);
-
-      DeleteProcessInstanceBatchConfiguration jobConfiguration = createJobConfiguration(configuration, idsForJob);
-      ByteArrayEntity configurationEntity = saveConfiguration(byteArrayManager, jobConfiguration);
-
-      JobEntity job = createBatchJob(batch, configurationEntity);
-      job.setDeploymentId(deploymentId);
-
-      jobManager.insertAndHintJobExecutor(job);
-      createdJobs++;
-
-      idsForJob.clear();
-    }
-
-    // update created jobs for batch
-    batch.setJobsCreated(batch.getJobsCreated() + createdJobs);
-
-    // update batch configuration
-    batch.setConfigurationBytes(writeConfiguration(configuration));
+  @Override
+  protected List<String> getProcessIdsPerDeployment(final CommandContext commandContext, List<String> processIds, String deploymentId) {
+    return commandContext.runWithoutAuthorization(() -> {
+      final ProcessInstanceQueryImpl processInstanceQueryToBeProcess = new ProcessInstanceQueryImpl();
+      processInstanceQueryToBeProcess.processInstanceIds(new HashSet<>(processIds)).deploymentId(deploymentId);
+      return commandContext.getExecutionManager().findProcessInstancesIdsByQueryCriteria(processInstanceQueryToBeProcess);
+    });
   }
 }

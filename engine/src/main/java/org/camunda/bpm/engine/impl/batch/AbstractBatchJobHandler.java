@@ -28,6 +28,7 @@ import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
 import org.camunda.bpm.engine.impl.util.JsonUtil;
 import com.google.gson.JsonElement;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -41,35 +42,71 @@ public abstract class AbstractBatchJobHandler<T extends BatchConfiguration> impl
 
   @Override
   public boolean createJobs(BatchEntity batch) {
-    CommandContext commandContext = Context.getCommandContext();
-    ByteArrayManager byteArrayManager = commandContext.getByteArrayManager();
-    JobManager jobManager = commandContext.getJobManager();
-
     T configuration = readConfiguration(batch.getConfigurationBytes());
+
+    List<String> ids = configuration.getIds();
+    CommandContext commandContext = Context.getCommandContext();
 
     int batchJobsPerSeed = batch.getBatchJobsPerSeed();
     int invocationsPerBatchJob = batch.getInvocationsPerBatchJob();
 
-    List<String> ids = configuration.getIds();
     int numberOfItemsToProcess = Math.min(invocationsPerBatchJob * batchJobsPerSeed, ids.size());
+
     // view of process instances to process
     List<String> processIds = ids.subList(0, numberOfItemsToProcess);
+    List<String> deploymentIds = getDeploymentIds(commandContext, processIds);
+
+    for (String deploymentId : deploymentIds) {
+      List<String> processIdsPerDeployment = getProcessIdsPerDeployment(commandContext, processIds, deploymentId);
+      processIds.removeAll(processIdsPerDeployment);
+      createJobEntities(batch, configuration, deploymentId, processIdsPerDeployment, invocationsPerBatchJob);
+    }
+
+    // when there are non-processed ids, create jobs without deployment id
+    if (!processIds.isEmpty()) {
+      createJobEntities(batch, configuration, null, processIds, invocationsPerBatchJob);
+    }
+
+    return ids.isEmpty();
+  }
+
+  protected List<String> getDeploymentIds(CommandContext commandContext, List<String> processIds) {
+    return Collections.emptyList();
+  }
+
+  protected List<String> getProcessIdsPerDeployment(CommandContext commandContext, List<String> processIds,
+      String deploymentId) {
+    return Collections.emptyList();
+  }
+
+  protected void createJobEntities(BatchEntity batch, T configuration, String deploymentId,
+      List<String> processInstancesToHandle, int invocationsPerBatchJob) {
+
+    if (processInstancesToHandle == null || processInstancesToHandle.isEmpty()) {
+      return;
+    }
+
+    CommandContext commandContext = Context.getCommandContext();
+    ByteArrayManager byteArrayManager = commandContext.getByteArrayManager();
+    JobManager jobManager = commandContext.getJobManager();
 
     int createdJobs = 0;
-    while (!processIds.isEmpty()) {
-      int lastIdIndex = Math.min(invocationsPerBatchJob, processIds.size());
+    while (!processInstancesToHandle.isEmpty()) {
+      int lastIdIndex = Math.min(invocationsPerBatchJob, processInstancesToHandle.size());
       // view of process instances for this job
-      List<String> idsForJob = processIds.subList(0, lastIdIndex);
+      List<String> idsForJob = processInstancesToHandle.subList(0, lastIdIndex);
 
       T jobConfiguration = createJobConfiguration(configuration, idsForJob);
       ByteArrayEntity configurationEntity = saveConfiguration(byteArrayManager, jobConfiguration);
 
       JobEntity job = createBatchJob(batch, configurationEntity);
+      job.setDeploymentId(deploymentId);
       postProcessJob(configuration, job);
+
       jobManager.insertAndHintJobExecutor(job);
+      createdJobs++;
 
       idsForJob.clear();
-      createdJobs++;
     }
 
     // update created jobs for batch
@@ -77,8 +114,6 @@ public abstract class AbstractBatchJobHandler<T extends BatchConfiguration> impl
 
     // update batch configuration
     batch.setConfigurationBytes(writeConfiguration(configuration));
-
-    return ids.isEmpty();
   }
 
   protected abstract T createJobConfiguration(T configuration, List<String> processIdsForJob);
@@ -86,7 +121,6 @@ public abstract class AbstractBatchJobHandler<T extends BatchConfiguration> impl
   protected void postProcessJob(T configuration, JobEntity job) {
     // do nothing as default
   }
-
 
   protected JobEntity createBatchJob(BatchEntity batch, ByteArrayEntity configuration) {
     BatchJobContext creationContext = new BatchJobContext(batch, configuration);
