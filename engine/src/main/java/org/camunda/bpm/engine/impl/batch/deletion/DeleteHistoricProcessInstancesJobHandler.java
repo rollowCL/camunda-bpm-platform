@@ -16,6 +16,12 @@
  */
 package org.camunda.bpm.engine.impl.batch.deletion;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import org.camunda.bpm.engine.HistoryService;
 import org.camunda.bpm.engine.batch.Batch;
 import org.camunda.bpm.engine.impl.HistoricProcessInstanceQueryImpl;
@@ -29,8 +35,6 @@ import org.camunda.bpm.engine.impl.jobexecutor.JobDeclaration;
 import org.camunda.bpm.engine.impl.persistence.entity.ByteArrayEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.ExecutionEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
-import java.util.HashSet;
-import java.util.List;
 
 /**
  * @author Askar Akhmerov
@@ -85,18 +89,17 @@ public class DeleteHistoricProcessInstancesJobHandler extends AbstractBatchJobHa
   }
 
   @Override
-  protected List<String> getDeploymentIds(final CommandContext commandContext, List<String> processIds) {
+  protected Map<String, List<String>> getProcessIdsPerDeployment(final CommandContext commandContext, List<String> processIds,
+      BatchConfiguration configuration) {
     return commandContext.runWithoutAuthorization(() ->
-      commandContext.getDeploymentManager().findDeploymentIdsByHistoricProcessInstances(processIds));
+      commandContext.getDeploymentManager().findDeploymentIdsByHistoricProcessInstances(processIds).stream()
+        .collect(Collectors.toMap(Function.identity(), id -> getInstancesForDeploymentId(commandContext, processIds, id))));
   }
 
-  @Override
-  protected List<String> getProcessIdsPerDeployment(final CommandContext commandContext, List<String> processIds, String deploymentId) {
-    return commandContext.runWithoutAuthorization(() -> {
-      HistoricProcessInstanceQueryImpl instancesQuery = new HistoricProcessInstanceQueryImpl();
-      instancesQuery.processInstanceIds(new HashSet<>(processIds)).deploymentId(deploymentId);
-      return commandContext.getHistoricProcessInstanceManager().findHistoricProcessInstanceIds(instancesQuery);
-    });
+  protected List<String> getInstancesForDeploymentId(CommandContext commandContext, List<String> processIds, String deploymentId) {
+    HistoricProcessInstanceQueryImpl instancesQuery = new HistoricProcessInstanceQueryImpl();
+    instancesQuery.processInstanceIds(new HashSet<>(processIds)).deploymentId(deploymentId);
+    return commandContext.getHistoricProcessInstanceManager().findHistoricProcessInstanceIds(instancesQuery);
   }
 
 }

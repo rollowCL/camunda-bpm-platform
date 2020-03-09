@@ -21,19 +21,18 @@ import org.camunda.bpm.engine.impl.batch.AbstractBatchJobHandler;
 import org.camunda.bpm.engine.impl.batch.BatchJobConfiguration;
 import org.camunda.bpm.engine.impl.batch.BatchJobContext;
 import org.camunda.bpm.engine.impl.batch.BatchJobDeclaration;
-import org.camunda.bpm.engine.impl.context.Context;
 import org.camunda.bpm.engine.impl.interceptor.CommandContext;
 import org.camunda.bpm.engine.impl.jobexecutor.JobDeclaration;
 import org.camunda.bpm.engine.impl.json.MigrationBatchConfigurationJsonConverter;
 import org.camunda.bpm.engine.impl.migration.MigrationPlanExecutionBuilderImpl;
 import org.camunda.bpm.engine.impl.persistence.entity.ByteArrayEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.ExecutionEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.JobEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.ProcessDefinitionEntity;
 import org.camunda.bpm.engine.migration.MigrationPlanExecutionBuilder;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Job handler for batch migration jobs. The batch migration job
@@ -66,12 +65,12 @@ public class MigrationBatchJobHandler extends AbstractBatchJobHandler<MigrationB
   }
 
   @Override
-  protected void postProcessJob(MigrationBatchConfiguration configuration, JobEntity job) {
-    CommandContext commandContext = Context.getCommandContext();
+  protected Map<String, List<String>> getProcessIdsPerDeployment(CommandContext commandContext, List<String> processIds, MigrationBatchConfiguration configuration) {
     String sourceProcessDefinitionId = configuration.getMigrationPlan().getSourceProcessDefinitionId();
-
-    ProcessDefinitionEntity processDefinition = getProcessDefinition(commandContext, sourceProcessDefinitionId);
-    job.setDeploymentId(processDefinition.getDeploymentId());
+    String deploymentId = commandContext.getProcessEngineConfiguration()
+      .getDeploymentCache().findDeployedProcessDefinitionById(sourceProcessDefinitionId)
+      .getDeploymentId();
+    return Collections.singletonMap(deploymentId, processIds);
   }
 
   @Override
@@ -99,12 +98,6 @@ public class MigrationBatchJobHandler extends AbstractBatchJobHandler<MigrationB
     ((MigrationPlanExecutionBuilderImpl) executionBuilder).execute(false);
 
     commandContext.getByteArrayManager().delete(configurationEntity);
-  }
-
-  protected ProcessDefinitionEntity getProcessDefinition(CommandContext commandContext, String processDefinitionId) {
-    return commandContext.getProcessEngineConfiguration()
-        .getDeploymentCache()
-        .findDeployedProcessDefinitionById(processDefinitionId);
   }
 
 }

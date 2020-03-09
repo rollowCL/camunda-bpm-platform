@@ -30,6 +30,8 @@ import com.google.gson.JsonElement;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 /**
  * Common methods for batch job handlers based on list of ids, providing serialization, configuration instantiation, etc.
@@ -54,12 +56,11 @@ public abstract class AbstractBatchJobHandler<T extends BatchConfiguration> impl
 
     // view of process instances to process
     List<String> processIds = ids.subList(0, numberOfItemsToProcess);
-    List<String> deploymentIds = getDeploymentIds(commandContext, processIds);
+    Map<String, List<String>> processIdsPerDeployments = getProcessIdsPerDeployment(commandContext, processIds, configuration);
 
-    for (String deploymentId : deploymentIds) {
-      List<String> processIdsPerDeployment = getProcessIdsPerDeployment(commandContext, processIds, deploymentId);
-      processIds.removeAll(processIdsPerDeployment);
-      createJobEntities(batch, configuration, deploymentId, processIdsPerDeployment, invocationsPerBatchJob);
+    for (Entry<String, List<String>> processIdsPerDeployment : processIdsPerDeployments.entrySet()) {
+      processIds.removeAll(processIdsPerDeployment.getValue());
+      createJobEntities(batch, configuration, processIdsPerDeployment.getKey(), processIdsPerDeployment.getValue(), invocationsPerBatchJob);
     }
 
     // when there are non-processed ids, create jobs without deployment id
@@ -70,13 +71,9 @@ public abstract class AbstractBatchJobHandler<T extends BatchConfiguration> impl
     return ids.isEmpty();
   }
 
-  protected List<String> getDeploymentIds(CommandContext commandContext, List<String> processIds) {
-    return Collections.emptyList();
-  }
-
-  protected List<String> getProcessIdsPerDeployment(CommandContext commandContext, List<String> processIds,
-      String deploymentId) {
-    return Collections.emptyList();
+  protected Map<String, List<String>> getProcessIdsPerDeployment(CommandContext commandContext, List<String> processIds,
+      T configuration) {
+    return Collections.emptyMap();
   }
 
   protected void createJobEntities(BatchEntity batch, T configuration, String deploymentId,

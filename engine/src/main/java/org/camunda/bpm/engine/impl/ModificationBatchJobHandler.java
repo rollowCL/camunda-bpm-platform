@@ -16,20 +16,20 @@
  */
 package org.camunda.bpm.engine.impl;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.camunda.bpm.engine.batch.Batch;
 import org.camunda.bpm.engine.impl.batch.AbstractBatchJobHandler;
 import org.camunda.bpm.engine.impl.batch.BatchJobConfiguration;
 import org.camunda.bpm.engine.impl.batch.BatchJobContext;
 import org.camunda.bpm.engine.impl.batch.BatchJobDeclaration;
-import org.camunda.bpm.engine.impl.context.Context;
 import org.camunda.bpm.engine.impl.interceptor.CommandContext;
 import org.camunda.bpm.engine.impl.jobexecutor.JobDeclaration;
 import org.camunda.bpm.engine.impl.json.ModificationBatchConfigurationJsonConverter;
 import org.camunda.bpm.engine.impl.persistence.entity.ByteArrayEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.ExecutionEntity;
-import org.camunda.bpm.engine.impl.persistence.entity.JobEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.ProcessDefinitionEntity;
 
@@ -43,10 +43,13 @@ public class ModificationBatchJobHandler extends AbstractBatchJobHandler<Modific
   }
 
   @Override
-  protected void postProcessJob(ModificationBatchConfiguration configuration, JobEntity job) {
-    CommandContext commandContext = Context.getCommandContext();
-    ProcessDefinitionEntity processDefinitionEntity = commandContext.getProcessEngineConfiguration().getDeploymentCache().findDeployedProcessDefinitionById(configuration.getProcessDefinitionId());
-    job.setDeploymentId(processDefinitionEntity.getDeploymentId());
+  protected Map<String, List<String>> getProcessIdsPerDeployment(CommandContext commandContext, List<String> processIds,
+      ModificationBatchConfiguration configuration) {
+    String processDefinitionId = configuration.getProcessDefinitionId();
+    String deploymentId = commandContext.getProcessEngineConfiguration()
+        .getDeploymentCache().findDeployedProcessDefinitionById(processDefinitionId)
+        .getDeploymentId();
+    return Collections.singletonMap(deploymentId, processIds);
   }
 
   @Override
