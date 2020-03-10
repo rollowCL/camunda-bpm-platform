@@ -17,17 +17,20 @@
 package org.camunda.bpm.engine.test.api.mgmt;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.junit.Assert.assertThat;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.assertj.core.api.Assertions;
 import org.camunda.bpm.engine.ProcessEngineConfiguration;
 import org.camunda.bpm.engine.ProcessEngineException;
 import org.camunda.bpm.engine.batch.Batch;
 import org.camunda.bpm.engine.history.HistoricProcessInstanceQuery;
+import org.camunda.bpm.engine.repository.ProcessDefinitionQuery;
 import org.camunda.bpm.engine.runtime.Job;
 import org.camunda.bpm.engine.runtime.JobQuery;
 import org.camunda.bpm.engine.runtime.ProcessInstanceQuery;
@@ -35,6 +38,8 @@ import org.camunda.bpm.engine.test.RequiredHistoryLevel;
 import org.camunda.bpm.engine.test.api.AbstractAsyncOperationsTest;
 import org.camunda.bpm.engine.test.util.ProcessEngineTestRule;
 import org.camunda.bpm.engine.test.util.ProvidedProcessEngineRule;
+import org.hamcrest.collection.IsIn;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -69,34 +74,16 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
 
   protected void prepareData() {
     testRule.deploy("org/camunda/bpm/engine/test/api/mgmt/ManagementServiceTest.testGetJobExceptionStacktrace.bpmn20.xml");
-    processInstanceIds = startTestProcesses(2);
+    if (processInstanceIds == null) {
+      processInstanceIds = new ArrayList<>();
+    }
+    processInstanceIds.addAll(startTestProcesses(2));
     ids = getAllJobIds();
   }
 
-  protected List<String> getAllJobIds() {
-    ArrayList<String> result = new ArrayList<>();
-    for (Job job : managementService.createJobQuery().list()) {
-      if (job.getProcessInstanceId() != null) {
-        result.add(job.getId());
-      }
-    }
-    return result;
-  }
-
-  protected List<String> startTestProcesses(int numberOfProcesses) {
-    ArrayList<String> ids = new ArrayList<>();
-
-    for (int i = 0; i < numberOfProcesses; i++) {
-      ids.add(runtimeService.startProcessInstanceByKey(TEST_PROCESS).getProcessInstanceId());
-    }
-
-    return ids;
-  }
-
-  protected void assertRetries(List<String> allJobIds, int i) {
-    for (String id : allJobIds) {
-      Assert.assertThat(managementService.createJobQuery().jobId(id).singleResult().getRetries(), is(i));
-    }
+  @After
+  public void tearDown() {
+    processInstanceIds = null;
   }
 
   @Test
@@ -139,6 +126,39 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
 
     // then
     assertThat(exceptions.size(), is(0));
+    assertRetries(ids, RETRIES);
+    assertHistoricBatchExists(testRule);
+  }
+
+  @Test
+  public void testSetJobsRetryAsyncWithProcessListInDifferentDeployments() throws Exception {
+    // given a second deployment
+    prepareData();
+    ProcessDefinitionQuery definitionQuery = engineRule.getRepositoryService().createProcessDefinitionQuery();
+    String firstDeploymentId = definitionQuery.processDefinitionVersion(1).singleResult().getDeploymentId();
+    String secondDeploymentId = definitionQuery.processDefinitionVersion(2).singleResult().getDeploymentId();
+
+    engineRule.getProcessEngineConfiguration().setInvocationsPerBatchJob(2);
+
+    // when
+    Batch batch = managementService.setJobRetriesAsync(processInstanceIds, (ProcessInstanceQuery) null, RETRIES);
+    executeSeedJob(batch);
+    // then batch jobs with different deployment ids exist
+    List<Job> batchJobs = managementService.createJobQuery().jobDefinitionId(batch.getBatchJobDefinitionId()).list();
+    assertThat(batchJobs.size(), is(2));
+    assertThat(batchJobs.get(0).getDeploymentId(), IsIn.isOneOf(firstDeploymentId, secondDeploymentId));
+    assertThat(batchJobs.get(1).getDeploymentId(), IsIn.isOneOf(firstDeploymentId, secondDeploymentId));
+    assertThat(batchJobs.get(0).getDeploymentId(), is(not(batchJobs.get(1).getDeploymentId())));
+
+    // when the batch jobs for the first deployment are executed
+    assertThat(getJobCountWithUnchangedRetries(), is(4L));
+    getJobIdsByDeployment(batchJobs, firstDeploymentId).forEach(managementService::executeJob);
+    // then the retries for jobs from process instances related to the first deployment should be changed
+    assertThat(getJobCountWithUnchangedRetries(), is(2L));
+
+    // when the remaining batch jobs are executed
+    getJobIdsByDeployment(batchJobs, secondDeploymentId).forEach(managementService::executeJob);
+    // then
     assertRetries(ids, RETRIES);
     assertHistoricBatchExists(testRule);
   }
@@ -409,4 +429,33 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
         .setInvocationsPerBatchJobByBatchType(new HashMap<>());
   }
 
+  protected List<String> getAllJobIds() {
+    return getAllJobs().stream().map(Job::getId).collect(Collectors.toList());
+  }
+
+  protected List<Job> getAllJobs() {
+    return managementService.createJobQuery().list().stream()
+        .filter(j -> j.getProcessInstanceId() != null)
+        .collect(Collectors.toList());
+  }
+
+  protected List<String> startTestProcesses(int numberOfProcesses) {
+    ArrayList<String> ids = new ArrayList<>();
+
+    for (int i = 0; i < numberOfProcesses; i++) {
+      ids.add(runtimeService.startProcessInstanceByKey(TEST_PROCESS).getProcessInstanceId());
+    }
+
+    return ids;
+  }
+
+  protected void assertRetries(List<String> allJobIds, int i) {
+    for (String id : allJobIds) {
+      Assert.assertThat(managementService.createJobQuery().jobId(id).singleResult().getRetries(), is(i));
+    }
+  }
+
+  protected long getJobCountWithUnchangedRetries() {
+    return getAllJobs().stream().filter(j -> j.getRetries() != RETRIES).count();
+  }
 }
