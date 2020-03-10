@@ -30,6 +30,7 @@ import org.camunda.bpm.engine.impl.persistence.entity.ExecutionEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.MessageEntity;
 import org.camunda.bpm.engine.migration.MigrationPlanExecutionBuilder;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +71,7 @@ public class MigrationBatchJobHandler extends AbstractBatchJobHandler<MigrationB
     String deploymentId = commandContext.getProcessEngineConfiguration()
       .getDeploymentCache().findDeployedProcessDefinitionById(sourceProcessDefinitionId)
       .getDeploymentId();
-    return Collections.singletonMap(deploymentId, processIds);
+    return Collections.singletonMap(deploymentId, new ArrayList<>(processIds));
   }
 
   @Override

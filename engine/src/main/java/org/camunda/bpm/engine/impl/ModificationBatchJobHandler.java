@@ -16,6 +16,7 @@
  */
 package org.camunda.bpm.engine.impl;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,7 @@ public class ModificationBatchJobHandler extends AbstractBatchJobHandler<Modific
     String deploymentId = commandContext.getProcessEngineConfiguration()
         .getDeploymentCache().findDeployedProcessDefinitionById(processDefinitionId)
         .getDeploymentId();
-    return Collections.singletonMap(deploymentId, processIds);
+    return Collections.singletonMap(deploymentId, new ArrayList<>(processIds));
   }
 
   @Override
