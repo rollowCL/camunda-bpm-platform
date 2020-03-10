@@ -20,7 +20,6 @@ import org.camunda.bpm.engine.HistoryService;
 import org.camunda.bpm.engine.ManagementService;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.batch.Batch;
-import org.camunda.bpm.engine.batch.history.HistoricBatch;
 import org.camunda.bpm.engine.history.HistoricTaskInstance;
 import org.camunda.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.camunda.bpm.engine.runtime.Job;
@@ -68,19 +67,11 @@ public abstract class AbstractAsyncOperationsTest {
 
   @After
   public void cleanUpBatches() {
-    Batch batch = managementService.createBatchQuery().singleResult();
-    if (batch != null) {
-      managementService.deleteBatch(batch.getId(), true);
-    }
+    managementService.createBatchQuery().list().forEach(b -> managementService.deleteBatch(b.getId(), true));
 
-    HistoricBatch historicBatch = historyService.createHistoricBatchQuery().singleResult();
-    if (historicBatch != null) {
-      historyService.deleteHistoricBatch(historicBatch.getId());
-    }
-  }
+    historyService.createHistoricBatchQuery().list().forEach(b -> historyService.deleteHistoricBatch(b.getId()));
 
-  @After
-  public void restoreEngineSettings() {
+    // restore default settings
     engineConfiguration.setBatchJobsPerSeed(defaultBatchJobsPerSeed);
     engineConfiguration.setInvocationsPerBatchJob(defaultInvocationsPerBatchJob);
   }
