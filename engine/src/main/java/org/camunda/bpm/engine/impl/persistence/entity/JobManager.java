@@ -103,12 +103,7 @@ public class JobManager extends AbstractManager {
   }
 
   private void hintJobExecutorIfNeeded(JobEntity jobEntity, Date duedate) {
-    // Check if this timer fires before the next time the job executor will check for new timers to fire.
-    // This is highly unlikely because normally waitTimeInMillis is 5000 (5 seconds)
-    // and timers are usually set further in the future
-    JobExecutor jobExecutor = Context.getProcessEngineConfiguration().getJobExecutor();
-    int waitTimeInMillis = jobExecutor.getWaitTimeInMillis();
-    if (duedate.getTime() < (ClockUtil.getCurrentTime().getTime() + waitTimeInMillis)) {
+    if (duedate.getTime() < ClockUtil.getCurrentTime().getTime()) {
       hintJobExecutor(jobEntity);
     }
   }
