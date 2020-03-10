@@ -21,19 +21,18 @@ import org.camunda.bpm.engine.ProcessEngineConfiguration;
 import org.camunda.bpm.engine.ProcessEngineException;
 import org.camunda.bpm.engine.TaskService;
 import org.camunda.bpm.engine.batch.Batch;
-import org.camunda.bpm.engine.batch.history.HistoricBatch;
 import org.camunda.bpm.engine.history.HistoricProcessInstance;
 import org.camunda.bpm.engine.history.HistoricProcessInstanceQuery;
-import org.camunda.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.camunda.bpm.engine.repository.ProcessDefinition;
 import org.camunda.bpm.engine.repository.ProcessDefinitionQuery;
 import org.camunda.bpm.engine.runtime.Job;
 import org.camunda.bpm.engine.task.Task;
 import org.camunda.bpm.engine.test.RequiredHistoryLevel;
 import org.camunda.bpm.engine.test.api.AbstractAsyncOperationsTest;
+import org.camunda.bpm.engine.test.util.ProcessEngineTestRule;
+import org.camunda.bpm.engine.test.util.ProvidedProcessEngineRule;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.collection.IsIn;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -60,6 +59,9 @@ public class HistoryServiceAsyncOperationsTest extends AbstractAsyncOperationsTe
 
   protected static final String TEST_REASON = "test reason";
 
+  protected ProvidedProcessEngineRule engineRule = new ProvidedProcessEngineRule();
+  protected ProcessEngineTestRule testRule = new ProcessEngineTestRule(engineRule);
+
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
@@ -68,24 +70,16 @@ public class HistoryServiceAsyncOperationsTest extends AbstractAsyncOperationsTe
 
   protected TaskService taskService;
   protected List<String> historicProcessInstances;
-  protected int defaultBatchJobsPerSeed;
-  protected int defaultInvocationsPerBatchJob;
-
 
   @Before
-  public void initServices() {
-    super.initServices();
+  public void setup() {
+    initDefaults(engineRule);
     taskService = engineRule.getTaskService();
-
-    // save defaults
-    ProcessEngineConfigurationImpl configuration = engineRule.getProcessEngineConfiguration();
-    defaultBatchJobsPerSeed = configuration.getBatchJobsPerSeed();
-    defaultInvocationsPerBatchJob = configuration.getInvocationsPerBatchJob();
 
     prepareData();
   }
 
-  public void prepareData() {
+  protected void prepareData() {
     testRule.deploy("org/camunda/bpm/engine/test/api/oneTaskProcess.bpmn20.xml");
     startTestProcesses(2);
 
@@ -97,26 +91,6 @@ public class HistoryServiceAsyncOperationsTest extends AbstractAsyncOperationsTe
     for (HistoricProcessInstance pi : historyService.createHistoricProcessInstanceQuery().list()) {
       historicProcessInstances.add(pi.getId());
     }
-  }
-
-  @After
-  public void cleanBatch() {
-    Batch batch = managementService.createBatchQuery().singleResult();
-    if (batch != null) {
-      managementService.deleteBatch(batch.getId(), true);
-    }
-
-    HistoricBatch historicBatch = historyService.createHistoricBatchQuery().singleResult();
-    if (historicBatch != null) {
-      historyService.deleteHistoricBatch(historicBatch.getId());
-    }
-  }
-
-  @After
-  public void restoreEngineSettings() {
-    ProcessEngineConfigurationImpl configuration = engineRule.getProcessEngineConfiguration();
-    configuration.setBatchJobsPerSeed(defaultBatchJobsPerSeed);
-    configuration.setInvocationsPerBatchJob(defaultInvocationsPerBatchJob);
   }
 
   @Test

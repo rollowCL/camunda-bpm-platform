@@ -20,10 +20,8 @@ import org.assertj.core.api.Assertions;
 import org.camunda.bpm.engine.ProcessEngineConfiguration;
 import org.camunda.bpm.engine.ProcessEngineException;
 import org.camunda.bpm.engine.batch.Batch;
-import org.camunda.bpm.engine.batch.history.HistoricBatch;
 import org.camunda.bpm.engine.delegate.ExecutionListener;
 import org.camunda.bpm.engine.history.HistoricProcessInstanceQuery;
-import org.camunda.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.camunda.bpm.engine.repository.ProcessDefinition;
 import org.camunda.bpm.engine.runtime.Job;
 import org.camunda.bpm.engine.runtime.ProcessInstance;
@@ -37,7 +35,6 @@ import org.camunda.bpm.engine.test.api.runtime.migration.models.ProcessModels;
 import org.camunda.bpm.engine.test.util.ProcessEngineTestRule;
 import org.camunda.bpm.engine.test.util.ProvidedProcessEngineRule;
 import org.camunda.bpm.model.bpmn.BpmnModelInstance;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -58,13 +55,10 @@ import static org.camunda.bpm.engine.test.api.runtime.migration.ModifiableBpmnMo
  */
 public class RuntimeServiceAsyncOperationsTest extends AbstractAsyncOperationsTest {
 
-  public ProcessEngineRule engineRule = new ProvidedProcessEngineRule();
-  public ProcessEngineTestRule testRule = new ProcessEngineTestRule(engineRule);
+  protected ProcessEngineRule engineRule = new ProvidedProcessEngineRule();
+  protected ProcessEngineTestRule testRule = new ProcessEngineTestRule(engineRule);
 
   protected MigrationTestRule migrationRule = new MigrationTestRule(engineRule);
-
-  private int defaultBatchJobsPerSeed;
-  private int defaultInvocationsPerBatchJob;
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -76,38 +70,8 @@ public class RuntimeServiceAsyncOperationsTest extends AbstractAsyncOperationsTe
   public RuleChain migrationChain = RuleChain.outerRule(testRule).around(migrationRule);
 
   @Before
-  public void initServices() {
-    runtimeService = engineRule.getRuntimeService();
-    managementService = engineRule.getManagementService();
-    historyService = engineRule.getHistoryService();
-  }
-
-  @After
-  public void cleanBatch() {
-    List<Batch> batches = managementService.createBatchQuery().list();
-    if (batches.size() > 0) {
-      for (Batch batch : batches)
-        managementService.deleteBatch(batch.getId(), true);
-    }
-
-    HistoricBatch historicBatch = historyService.createHistoricBatchQuery().singleResult();
-    if (historicBatch != null) {
-      historyService.deleteHistoricBatch(historicBatch.getId());
-    }
-  }
-
-  @Before
-  public void storeEngineSettings() {
-    ProcessEngineConfigurationImpl configuration = engineRule.getProcessEngineConfiguration();
-    defaultBatchJobsPerSeed = configuration.getBatchJobsPerSeed();
-    defaultInvocationsPerBatchJob = configuration.getInvocationsPerBatchJob();
-  }
-
-  @After
-  public void restoreEngineSettings() {
-    ProcessEngineConfigurationImpl configuration = engineRule.getProcessEngineConfiguration();
-    configuration.setBatchJobsPerSeed(defaultBatchJobsPerSeed);
-    configuration.setInvocationsPerBatchJob(defaultInvocationsPerBatchJob);
+  public void setup() {
+    initDefaults(engineRule);
   }
 
   @Deployment(resources = {

@@ -20,12 +20,13 @@ import org.camunda.bpm.engine.HistoryService;
 import org.camunda.bpm.engine.ManagementService;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.batch.Batch;
+import org.camunda.bpm.engine.batch.history.HistoricBatch;
 import org.camunda.bpm.engine.history.HistoricTaskInstance;
+import org.camunda.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.camunda.bpm.engine.runtime.Job;
 import org.camunda.bpm.engine.test.ProcessEngineRule;
 import org.camunda.bpm.engine.test.util.ProcessEngineTestRule;
-import org.camunda.bpm.engine.test.util.ProvidedProcessEngineRule;
-import org.junit.Before;
+import org.junit.After;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,14 +49,40 @@ public abstract class AbstractAsyncOperationsTest {
   protected ManagementService managementService;
   protected HistoryService historyService;
 
-  public ProcessEngineRule engineRule = new ProvidedProcessEngineRule();
-  public ProcessEngineTestRule testRule = new ProcessEngineTestRule(engineRule);
+  protected ProcessEngineConfigurationImpl engineConfiguration;
 
-  @Before
-  public void initServices() {
+  protected int defaultBatchJobsPerSeed;
+  protected int defaultInvocationsPerBatchJob;
+
+  protected void initDefaults(ProcessEngineRule engineRule) {
     runtimeService = engineRule.getRuntimeService();
     managementService = engineRule.getManagementService();
     historyService = engineRule.getHistoryService();
+
+    engineConfiguration = engineRule.getProcessEngineConfiguration();
+
+    // save defaults
+    defaultBatchJobsPerSeed = engineConfiguration.getBatchJobsPerSeed();
+    defaultInvocationsPerBatchJob = engineConfiguration.getInvocationsPerBatchJob();
+  }
+
+  @After
+  public void cleanUpBatches() {
+    Batch batch = managementService.createBatchQuery().singleResult();
+    if (batch != null) {
+      managementService.deleteBatch(batch.getId(), true);
+    }
+
+    HistoricBatch historicBatch = historyService.createHistoricBatchQuery().singleResult();
+    if (historicBatch != null) {
+      historyService.deleteHistoricBatch(historicBatch.getId());
+    }
+  }
+
+  @After
+  public void restoreEngineSettings() {
+    engineConfiguration.setBatchJobsPerSeed(defaultBatchJobsPerSeed);
+    engineConfiguration.setInvocationsPerBatchJob(defaultInvocationsPerBatchJob);
   }
 
   protected List<String> getJobIdsByDeployment(List<Job> jobs, String deploymentId) {
@@ -80,7 +107,7 @@ public abstract class AbstractAsyncOperationsTest {
     List<Job> batchJobs = managementService.createJobQuery().jobDefinitionId(batchJobDefinitionId).list();
     assertFalse(batchJobs.isEmpty());
 
-    List<Exception> catchedExceptions = new ArrayList<Exception>();
+    List<Exception> catchedExceptions = new ArrayList<>();
 
     for (Job batchJob : batchJobs) {
       try {
@@ -94,7 +121,7 @@ public abstract class AbstractAsyncOperationsTest {
   }
 
   protected List<String> startTestProcesses(int numberOfProcesses) {
-    ArrayList<String> ids = new ArrayList<String>();
+    ArrayList<String> ids = new ArrayList<>();
 
     for (int i = 0; i < numberOfProcesses; i++) {
       ids.add(runtimeService.startProcessInstanceByKey(ONE_TASK_PROCESS).getProcessInstanceId());

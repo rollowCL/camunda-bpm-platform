@@ -27,6 +27,8 @@ import org.camunda.bpm.engine.runtime.JobQuery;
 import org.camunda.bpm.engine.runtime.ProcessInstanceQuery;
 import org.camunda.bpm.engine.test.RequiredHistoryLevel;
 import org.camunda.bpm.engine.test.api.AbstractAsyncOperationsTest;
+import org.camunda.bpm.engine.test.util.ProcessEngineTestRule;
+import org.camunda.bpm.engine.test.util.ProvidedProcessEngineRule;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -49,6 +51,9 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
   protected static final int RETRIES = 5;
   protected static final java.lang.String TEST_PROCESS = "exceptionInJobExecution";
 
+  protected ProvidedProcessEngineRule engineRule = new ProvidedProcessEngineRule();
+  protected ProcessEngineTestRule testRule = new ProcessEngineTestRule(engineRule);
+
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
@@ -59,12 +64,12 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
   protected List<String> ids;
 
   @Before
-  public void initServices() {
-    super.initServices();
+  public void setup() {
+    initDefaults(engineRule);
     prepareData();
   }
 
-  public void prepareData() {
+  protected void prepareData() {
     testRule.deploy("org/camunda/bpm/engine/test/api/mgmt/ManagementServiceTest.testGetJobExceptionStacktrace.bpmn20.xml");
     processInstanceIds = startTestProcesses(2);
     ids = getAllJobIds();
@@ -84,7 +89,7 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
   }
 
   protected List<String> getAllJobIds() {
-    ArrayList<String> result = new ArrayList<String>();
+    ArrayList<String> result = new ArrayList<>();
     for (Job job : managementService.createJobQuery().list()) {
       if (job.getProcessInstanceId() != null) {
         result.add(job.getId());
@@ -94,7 +99,7 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
   }
 
   protected List<String> startTestProcesses(int numberOfProcesses) {
-    ArrayList<String> ids = new ArrayList<String>();
+    ArrayList<String> ids = new ArrayList<>();
 
     for (int i = 0; i < numberOfProcesses; i++) {
       ids.add(runtimeService.startProcessInstanceByKey(TEST_PROCESS).getProcessInstanceId());
@@ -365,7 +370,7 @@ public class ManagementServiceAsyncOperationsTest extends AbstractAsyncOperation
     thrown.expect(ProcessEngineException.class);
 
     //when
-    managementService.setJobRetriesAsync((ArrayList) null, RETRIES);
+    managementService.setJobRetriesAsync((List<String>) null, RETRIES);
   }
 
   @Test
